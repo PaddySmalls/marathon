@@ -300,18 +300,6 @@ trait AppConversion extends ConstraintConversion with EnvVarConversion with Heal
         r => r.getName -> (r.getScalar.getValue: Double)
       }(collection.breakOut)
 
-    def envMap: Map[String, EnvVarValueOrSecret] = (
-      if (service.hasCmd) {
-        service.getCmd.getEnvironment.getVariablesList.map { item =>
-          item.getName -> EnvVarValue(item.getValue)
-        }.toMap
-      } else {
-        App.DefaultEnv
-      }
-    ) ++ service.getEnvVarReferencesList.withFilter(_.getType == Protos.EnvVarReference.Type.SECRET).map { secretRef =>
-        secretRef.getName -> EnvVarSecretRef(secretRef.getSecretRef.getSecretId)
-      }
-
     val version = service.when(_.hasVersion, s => Timestamp(s.getVersion).toOffsetDateTime).orElse(App.DefaultVersion)
     val versionInfo: Option[VersionInfo] =
       if (service.hasLastScalingAt) Option(VersionInfo(
@@ -332,7 +320,7 @@ trait AppConversion extends ConstraintConversion with EnvVarConversion with Heal
       cpus = resourcesMap.getOrElse(Resource.CPUS, App.DefaultCpus),
       dependencies = service.whenOrElse(_.getDependenciesCount > 0, _.getDependenciesList.to[Set], App.DefaultDependencies),
       disk = resourcesMap.getOrElse(Resource.DISK, App.DefaultDisk),
-      env = envMap,
+      env = service.whenOrElse(_.hasCmd, s => (s.getCmd.getEnvironment.getVariablesList.to[Seq], s.getEnvVarReferencesList.to[Seq]).toRaml, App.DefaultEnv),
       executor = service.whenOrElse(_.hasExecutor, _.getExecutor, App.DefaultExecutor),
       fetch = if (service.hasCmd && service.getCmd.getUrisCount > 0) service.getCmd.getUrisList.toRaml else App.DefaultFetch,
       healthChecks = service.whenOrElse(_.getHealthChecksCount > 0, _.getHealthChecksList.toRaml.to[Set], App.DefaultHealthChecks),
